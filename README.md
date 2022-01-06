@@ -10,7 +10,7 @@ Il s'agit d'un programme qui produit à partir d'un fichier texte une matrice de
 
 ## Spécifications
 
-* _Entrées_ : Répertoire de textes par dates, mais vous pouvez mettre un seul texte
-* _Sorties_ : Matrice dont le type est défini par l'utilisateur (dirigée, no dirigée, TF-IDF, Counter)
+* **Entrées** : Répertoire de textes par dates, mais vous pouvez mettre un seul texte
+* **Sorties** : Matrice dont le type est défini par l'utilisateur (dirigée, no dirigée, TF-IDF, Counter)
 Métrique de spécificité définie par l'utilisateur (hypergeometrique, dice, cosine, log-likelihood, autres)
-* _Autres spécifications_ : Gestion des stop-words, gestion des fenêtres, optimisation des ressources mémoire et computationnelle.
+* **Autres spécifications** : Gestion des stop-words, gestion des fenêtres, optimisation des ressources mémoire et computationnelle.

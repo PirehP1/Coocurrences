@@ -19,14 +19,12 @@ sys.path.append("../")
 import os
 import numpy as np
 import pandas as pd
-#import networkx
 import collections
 import itertools
 import scipy.sparse as sp
 import time
-import argparse
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from traitement.traitement import Preprocessing, read_stop_word, timer
+from traitement.traitement import Preprocessing, read_stop_word
 from metrique.metrique import *
 
 
@@ -38,7 +36,7 @@ class MatrixGenerator(Preprocessing):
         super(MatrixGenerator, self).__init__(*args, **kwargs)
         
                        
-    @timer
+    #@timer
     def get_vocab(self, text_clean, **kwargs):
         """
         This function retrieves the vocabulary of a corpus
@@ -68,7 +66,9 @@ class MatrixGenerator(Preprocessing):
         doc = text_clean.split(separator)
         index = 0
         for token in doc:
-            if token not in stopwords and len(token)>= filter_by_length:
+            if (token in stopwords) or (len(token)<= filter_by_length) or (token==""):
+                pass
+            else:
                 if token in vocab.keys():
                     pass
                 else:
@@ -77,7 +77,7 @@ class MatrixGenerator(Preprocessing):
         return vocab
     
     
-    @timer
+    #@timer
     def get_vocab_filter_by_count(self, text_clean, **kwargs):
         """
         
@@ -105,7 +105,12 @@ class MatrixGenerator(Preprocessing):
         separator = kwargs.get("separator", self.separator)
         filter_by_count = kwargs.get("filter_by_count", 0)
         
-        list_words = [tok for tok in text_clean.split(separator) if (tok not in stopwords and len(tok) >= filter_by_length)]
+        list_words = []
+        for token in text_clean.split(separator):
+            if (token in stopwords) or (len(token)<= filter_by_length) or (token==""):
+                pass
+            else:
+                list_words.append(token)
         full_counter = collections.Counter(list_words)
         vocab = {}
         index = 0
@@ -119,7 +124,7 @@ class MatrixGenerator(Preprocessing):
         return vocab
         
   
-    @timer
+    #@timer
     def counter_full(self, text_clean, vocab, **kwargs):
         """
         This function creates a word counter over the full text
@@ -145,7 +150,7 @@ class MatrixGenerator(Preprocessing):
         return collections.Counter(list_words)
     
   
-    @timer    
+   # @timer    
     def counter_by_sentence(self, raw_text, vocab, regex_clean, separator_sent=".", **kwargs):
         """
         This function creates a generator of word counter by sentences
@@ -185,7 +190,7 @@ class MatrixGenerator(Preprocessing):
             yield collections.Counter(list_tok)
      
             
-    @timer 
+    #@timer 
     def counter_by_window(self, text_clean, vocab, **kwargs):
         """
         This function creates a generator of word counter by window
@@ -229,7 +234,7 @@ class MatrixGenerator(Preprocessing):
             yield collections.Counter(chunk)
             
             
-    @timer        
+    #@timer        
     def counter_by_sliding_window(self, text_clean, vocab, step=1, **kwargs):
         """
         This function creates a generator of word counter by sliding window
@@ -267,7 +272,7 @@ class MatrixGenerator(Preprocessing):
             yield collections.Counter(chunk)
             
     
-    @timer
+    #@timer
     def get_directed(self, data, vocab, option="full_text"):
         """
         
@@ -298,20 +303,21 @@ class MatrixGenerator(Preprocessing):
         if option == "full_text":
             counter = self.counter_full(data, vocab)
             for token, index in vocab.items():
-                    dir_mat[index,:] += counter[token]
-                
+                dir_mat[index,:] += counter[token]
+                            
         else:
             for counter in data:
                 for ((token1, count1), (token2, count2)) in itertools.permutations(counter.items(),2):
                     i = vocab[token1]
                     j = vocab[token2]
                     if token1 != token2:
-                        dir_mat[i, j] += count1
+                        dir_mat[i, j] += count2 #ou count1, sinon il faut prendre la transposée
+        
         return pd.DataFrame(dir_mat, columns=list_vocab, index=list_vocab)  
       
     
-    @timer
-    def get_non_directed(self, data, **kwargs):
+    #@timer
+    def get_non_directed(self, data, vocab, **kwargs):
         """
         
 
@@ -347,13 +353,13 @@ class MatrixGenerator(Preprocessing):
         
         indices = []
         data = []
-        vocab = {}
         indptr = [0]
         for i, d in enumerate(list_token):
             for term in d:
-                index = vocab.setdefault(term, len(vocab))
-                indices.append(index)
-                data.append(1)
+                if term in vocab.keys():
+                    index = vocab[term]
+                    indices.append(index)
+                    data.append(1)
             indptr.append(len(indices))
         mat = sp.csr_matrix((data, indices, indptr), dtype=int)
         mat_coocs = np.dot(mat.T, mat)
@@ -361,7 +367,7 @@ class MatrixGenerator(Preprocessing):
     
  
 #TODO create your own word analyzer ofr Counter and TFIDF matrices    
-    @timer
+    #@timer
     def get_tfidf_matrix(self, data, preprocess=True, **kwargs):
         """
         This function creates a word matrix from TFIDF from sklearn
@@ -408,7 +414,7 @@ class MatrixGenerator(Preprocessing):
         return pd.DataFrame(data=mat_tfidf_wm.toarray(), columns=tfidf_tokens, index=tfidf_tokens)
     
         
-    @timer
+    #@timer
     def get_counter_matrix(self, data, preprocess=True, **kwargs):
         """
         This function creates a word matrix based on Counter from sklearn
@@ -454,6 +460,49 @@ class MatrixGenerator(Preprocessing):
         return pd.DataFrame(data=mat_count_wm.toarray(), columns=count_tokens, index=count_tokens)
 
 
+    #@timer
+    def specificite(self, data, vocab, matrix, counter, option="logfrac", seuil=0.5):
+        sum_rows = matrix.sum(axis=1).tolist()
+        list_token = matrix.columns.tolist()
+        T = sum(counter.values())
+        final = np.zeros_like(matrix)
+        if option =="cosine":
+            return pd.DataFrame(calculate_cosine(matrix.values), index=list_token, columns=list_token)
+        
+        for count in data:
+            for ((token1, count1), (token2, count2)) in itertools.permutations(count.items(),2): 
+                if token1 in matrix.columns and token2 in matrix.columns:
+                    i = vocab[token1]
+                    j = vocab[token2]
+                    t = sum_rows[i] # comprends toujours pas                
+                    F = counter[token2]
+                    f = count2 #tester si c'est count de 1 ou 2
+
+                    if token1 != token2:
+                        if option == "combinatory":
+                            final[i, j] = hypergeometric(F, f, t, T, option="combinatory")
+                        elif option == "scipy":
+                            final[i, j] = hypergeometric(F, f, t, T, option="scipy")
+                        elif option == "ramanujan":
+                            final[i, j] = hypergeometric(F, f, t, T, option="ramanujan")
+                        elif option == "logfrac":
+                            final[i, j] = hypergeometric(F, f, t, T, option="logfrac")
+                        elif option == "spec":
+                            final[i, j] = ca_coeff_spec(T, t, F, f, seuil, option="logfrac") 
+                        elif option == "dice":
+                            final[i, j] = coeffdice(f,t,F)
+        return pd.DataFrame(final, index=list_token, columns=list_token)
+    
+    
+    #@timer
+    def get_adjacency(self, matrix):
+        adj = matrix.copy()
+        adj[adj > 0] = 1
+        return adj
+
+# FONCTIONS UTILES
+
+
 
 def save_result(result, filename, option="csv"):
     """
@@ -484,585 +533,28 @@ def save_result(result, filename, option="csv"):
         result.to_pickle(filename)
     if option == "hdf5":
         result.to_hdf(filename)
+
+
+def concatenate_matrix(list_matrix, list_file):
+    """
+    Create a big matrix
+
+    Parameters
+    ----------
+    list_matrix : TYPE list
+        DESCRIPTION. list of the matrices we want to concatenate
+    list_file : TYPE list
+        DESCRIPTION. list of the filenames
+
+    Returns
+    -------
+    pandas DataFrame
+    """
+    list_name = [file.split("/")[-1].split(".")[0] for file in list_file]
+    for df, name in zip(list_matrix, list_name):
+        df["Date_Fichier"] = [name]*df.shape[0]
+    return pd.concat(list_matrix, axis=0)
+    
         
+      
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--input_path', default=None, help="folder path of the text files, str")
-    parser.add_argument('--path_stop', default=None, help="path of stop words list")
-    parser.add_argument('--stopwords', default=None, help="list of stop words")
-    parser.add_argument("--window", default=5, type=int, help="analysis window, nb of words") 
-    parser.add_argument("--remove_punctuation", default=True, type=bool, help="boolean to know if we want to remove all the punctuation")
-    parser.add_argument("--filter_by_length", default=0, type=int, help="value to filter words by their length")
-    parser.add_argument("--separator", default=" ", type=str, help="simple separator to get tokens from text")
-    parser.add_argument("--case", default=True, type=bool, help="boolean to know if we want to lower cases")
-    parser.add_argument("--save", default=None, type=str, help="folder path to save results")
-    args = parser.parse_args()
-    if args.input_path == None:
-        input_path = "../Data/corpusbytime"
-    else:
-        input_path = args.input_path
-    if args.save == None:
-        save_path = "../Data/results"
-    else:
-        save_path = args.save
-    if isinstance(args.stopwords, list):
-        stop_words = args.stopwords
-    else:
-        if args.path_stop == None and args.stopwords==None:
-            stop_words = []
-        else:
-            path_stop_words = "../Data/stop_words.txt"
-            stop_words = read_stop_word(path_stop_words)
-    #print(stop_words)
-    window = args.window
-    remove_punctuation = args.remove_punctuation
-    filter_by_length = args.filter_by_length
-    separator = args.separator
-    case = args.case
-    # input_path = "../Data/corpusbytime"
-    # path_stop_words = "../Data/stop_words.txt"
-    #reading stop words
-    # stop_words = read_stop_word(path_stop_words)
-    stop_words_null = []
-
-    #initialization matrix_generator
-    matrix_gen = MatrixGenerator(input_path=input_path,
-                            window=window,
-                            stop_words=stop_words)
-    matrix_gen50 = MatrixGenerator(input_path=input_path,
-                            window=50,
-                            stop_words=stop_words)
-    #getting list of paths to process
-    list_file = matrix_gen.get_files_simple()
-    #print(list_file)
-    #regex definition
-    regex_clean = "(\')?(\d*)?(\\n)[']"
-    
-    text_basic = """Le but de toute association politique est la conservation des droits naturels et imprescriptibles de l'Homme. 
-    Ces droits sont la liberté, la propriété, la sûreté, et la résistance à l'oppression."""
-    text_test = "I enjoy flying. I like NLP just like you. I like Deep Learning"
-    with open(list_file[0], "r") as f:
-        text_file = f.read()
-    
-    print("-----------LECTURE DU TEXTE FULL + BASIC CLEANING ----------------")
-    print("...LECTURE DE TEXT_TEST FULL TEXT")
-    text_full_test = matrix_gen.read_text_full(None, regex_clean, texte=text_test)
-    print(text_full_test)
-    print("...LECTURE DE TEXT_BASIC FULL TEXT")
-    text_full_basic = matrix_gen.read_text_full(None, regex_clean, texte=text_basic)
-    print(text_full_basic)
-    print("...LECTURE DE TEXT_FILE FULL TEXT")
-    text_full_file = matrix_gen.read_text_full(list_file[0], regex_clean)
-    print(text_full_file[0][:50])
-    print(" ")
-    print("-------------VERIFICATION GET_VOCAB FULL TEXT----------------")
-    print("...1.GET_VOCAB POUR TEXT_TEST FULL TEXT")
-    vocab_test_count = matrix_gen.get_vocab_filter_by_count(text_full_test[0],
-                                                            filter_by_length=0,
-                                                            stop_words=stop_words_null)
-    print(vocab_test_count)
-    print("...2.GET_VOCAB POUR TEXT_BASIC FULL TEXT")
-    vocab_basic_count = matrix_gen.get_vocab_filter_by_count(text_full_basic[0],
-                                                              filter_by_length=2,
-                                                              stop_words=stop_words)
-    print(vocab_basic_count)
-    print("...3.GET_VOCAB POUR TEXT_FILE FULL TEXT")
-    vocab_file_count = matrix_gen.get_vocab_filter_by_count(text_full_file[0],
-                                                            filter_by_length=2,
-                                                            stop_words=stop_words,
-                                                            filter_by_count=5)
-    print(len(vocab_file_count.keys()))
-    print(" ")
-    print("-------------VERIFICATION GET_VOCAB FULL TEXT----------------")
-    print("...4.GET_VOCAB POUR TEXT_TEST FULL TEXT")
-    vocab_test = matrix_gen.get_vocab(text_full_test[0],
-                                      filter_by_length=0,
-                                      stop_words=stop_words_null)
-    print(vocab_test)
-    print("...5.GET_VOCAB POUR TEXT_BASIC FULL TEXT")
-    vocab_basic = matrix_gen.get_vocab(text_full_basic[0],
-                                      filter_by_length=2,
-                                      stop_words=stop_words)
-    print(vocab_basic)
-    print("...6.GET_VOCAB POUR TEXT_FILE FULL TEXT")
-    vocab_file = matrix_gen.get_vocab(text_full_file[0],
-                                      filter_by_length=2,
-                                      stop_words=stop_words)
-    print(len(vocab_file.keys()))
-    print(" ")
-    print("-------------VERIFICATION COUNTER_FULL----------------")
-    print("...7.COUNTER_FULL POUR TEXT_TEST")
-    counter_full_test = matrix_gen.counter_full(text_full_test[0], vocab_test)
-    print(counter_full_test)
-    print("...8.COUNTER_FULL POUR TEXT_BASIC")
-    counter_full_basic = matrix_gen.counter_full(text_full_basic[0], vocab_basic)
-    print(counter_full_basic)
-    print("...9.COUNTER_FULL POUR TEXT_FILE")
-    counter_full_file = matrix_gen.counter_full(text_full_file[0], vocab_file)
-    print(len(counter_full_file.keys()))
-    print(" ")
-    print("-------------VERIFICATION COUNTER_BY_SENTENCE----------------")
-    print("...10.COUNTER_BY_SENTENCE POUR TEXT_TEST")
-    gen_count_sent_test = matrix_gen.counter_by_sentence(text_test, 
-                                                          vocab_test, 
-                                                          regex_clean, 
-                                                          separator_sent=".")
-    print(next(gen_count_sent_test))
-    gen_count_sent_test = matrix_gen.counter_by_sentence(text_test, 
-                                                          vocab_test, 
-                                                          regex_clean, 
-                                                          separator_sent=".")
-    print("...11.COUNTER_BY_SENTENCE POUR TEXT_BASIC")
-    gen_count_sent_basic = matrix_gen.counter_by_sentence(text_basic, 
-                                                          vocab_basic, 
-                                                          regex_clean, 
-                                                          separator_sent=".")
-    print(next(gen_count_sent_basic))
-    gen_count_sent_basic = matrix_gen.counter_by_sentence(text_basic, 
-                                                          vocab_basic, 
-                                                          regex_clean, 
-                                                          separator_sent=".")
-    print("...12.COUNTER_BY_SENTENCE POUR TEXT_FILE")
-    gen_count_sent_file = matrix_gen.counter_by_sentence(text_file, 
-                                                          vocab_file, 
-                                                          regex_clean, 
-                                                          separator_sent=".")
-    print(next(gen_count_sent_file))
-    gen_count_sent_file = matrix_gen.counter_by_sentence(text_file, 
-                                                          vocab_file, 
-                                                          regex_clean, 
-                                                          separator_sent=".")
-    print(" ")
-    print("-------------VERIFICATION COUNTER_BY_WINDOW----------------")
-    print("...13.COUNTER_BY_WINDOW POUR TEXT_TEST")
-    gen_count_wnd_test = matrix_gen.counter_by_window(text_full_test[0], 
-                                                      vocab_test, 
-                                                      window=5)
-    print(next(gen_count_wnd_test))
-    gen_count_wnd_test = matrix_gen.counter_by_window(text_full_test[0], 
-                                                      vocab_test, 
-                                                      window=5)
-    print("...14.COUNTER_BY_WINDOW POUR TEXT_BASIC")
-    gen_count_wnd_basic = matrix_gen.counter_by_window(text_full_basic[0], 
-                                                      vocab_basic, 
-                                                      window=5)
-    print(next(gen_count_wnd_basic))
-    gen_count_wnd_basic = matrix_gen.counter_by_window(text_full_basic[0], 
-                                                      vocab_basic, 
-                                                      window=5)
-    print("...15.COUNTER_BY_WINDOW POUR TEXT_FILE")
-    gen_count_wnd_file = matrix_gen.counter_by_window(text_full_file[0], 
-                                                      vocab_file, 
-                                                      window=50)
-    print(next(gen_count_wnd_file))
-    gen_count_wnd_file = matrix_gen.counter_by_window(text_full_file[0], 
-                                                      vocab_file, 
-                                                      window=50)
-    print(" ")
-    print("-------------VERIFICATION COUNTER_BY_SLIDING_WINDOW----------------")
-    print("...16.COUNTER_BY_SLIDING_WINDOW POUR TEXT_TEST")
-    gen_count_swnd_test = matrix_gen.counter_by_sliding_window(text_full_test[0], 
-                                                                vocab_test, 
-                                                                window=4)
-    print(next(gen_count_swnd_test))
-    gen_count_swnd_test = matrix_gen.counter_by_sliding_window(text_full_test[0], 
-                                                                vocab_test, 
-                                                                window=4)
-    print("...17.COUNTER_BY_SLIDING_WINDOW POUR TEXT_BASIC")
-    gen_count_swnd_basic = matrix_gen.counter_by_sliding_window(text_full_basic[0], 
-                                                                vocab_basic, 
-                                                                window=5,
-                                                                step=2)
-    print(next(gen_count_swnd_basic))
-    gen_count_swnd_basic = matrix_gen.counter_by_sliding_window(text_full_basic[0], 
-                                                                vocab_basic, 
-                                                                window=5,
-                                                                step=2)
-    print("...18.COUNTER_BY_SLIDING_WINDOW POUR TEXT_FILE")
-    gen_count_swnd_file = matrix_gen.counter_by_sliding_window(text_full_file[0], 
-                                                                vocab_file, 
-                                                                window=50,
-                                                                step=10)
-    print(next(gen_count_swnd_file))
-    gen_count_swnd_file = matrix_gen.counter_by_sliding_window(text_full_file[0], 
-                                                                vocab_file, 
-                                                                window=50,
-                                                                step=10)
-    print(" ")
-    print("-------------VERIFICATION GET_DIRECTED_MATRIX FULL_TEXT----------------")
-    print("...19.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_TEST FULL TEXT")
-    mat_dir_full_test = matrix_gen.get_directed(text_full_test[0], 
-                                                vocab_test, 
-                                                option="full_text")
-    print(mat_dir_full_test)
-    print("...20.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_BASIC FULL TEXT")
-    mat_dir_full_basic = matrix_gen.get_directed(text_full_basic[0], 
-                                                vocab_basic, 
-                                                option="full_text")
-    print(mat_dir_full_basic)
-    print("...21.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_FILE FULL TEXT")
-    mat_dir_full_file = matrix_gen.get_directed(text_full_file[0], 
-                                                vocab_file, 
-                                                option="full_text")
-    print(mat_dir_full_file)
-    print(" ")
-    print("-------------VERIFICATION GET_DIRECTED_MATRIX SENTENCE----------------")
-    print("...22.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_TEST SENTENCE")
-    mat_dir_sent_test = matrix_gen.get_directed(gen_count_sent_test, 
-                                                vocab_test, 
-                                                option="")
-    print(mat_dir_sent_test)
-    print("...23.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_BASIC SENTENCE")
-    mat_dir_sent_basic = matrix_gen.get_directed(gen_count_sent_basic, 
-                                                vocab_basic, 
-                                                option="")
-    print(mat_dir_sent_basic)
-    print("...24.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_FILE SENTENCE")
-    mat_dir_sent_file = matrix_gen.get_directed(gen_count_sent_file, 
-                                                vocab_file, 
-                                                option="")
-    print(mat_dir_sent_file)
-    print(" ")
-    print("-------------VERIFICATION GET_DIRECTED_MATRIX WINDOW----------------")
-    print("...25.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_TEST WINDOW")
-    mat_dir_wnd_test = matrix_gen.get_directed(gen_count_wnd_test, 
-                                                vocab_test, 
-                                                option="")
-    print(mat_dir_wnd_test)
-    print("...26.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_BASIC WINDOW")
-    mat_dir_wnd_basic = matrix_gen.get_directed(gen_count_wnd_basic, 
-                                                vocab_basic, 
-                                                option="")
-    print(mat_dir_wnd_basic)
-    print("...27.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_TEST WINDOW")
-    mat_dir_wnd_file = matrix_gen.get_directed(gen_count_wnd_file, 
-                                                vocab_file, 
-                                                option="")
-    print(mat_dir_wnd_file)
-    print(" ")
-    print("-------------VERIFICATION GET_DIRECTED_MATRIX SLIDING WINDOW----------------")
-    print("...28.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_TEST SLIDING WINDOW")
-    mat_dir_swnd_test = matrix_gen.get_directed(gen_count_swnd_test, 
-                                                vocab_test, 
-                                                option="")
-    print(mat_dir_swnd_test)
-    print("...29.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_BASIC SLIDING WINDOW")
-    mat_dir_swnd_basic = matrix_gen.get_directed(gen_count_swnd_basic, 
-                                                vocab_basic, 
-                                                option="")
-    print(mat_dir_swnd_basic)
-    print("...30.VERIFICATION GET_DIRECTED_MATRIX POUR TEXT_FILE SLIDING WINDOW")
-    mat_dir_swnd_file = matrix_gen.get_directed(gen_count_swnd_file, 
-                                                vocab_file, 
-                                                option="")
-    print(mat_dir_swnd_file)
-    print(" ")
-    print("-------------VERIFICATION GET_NON_DIRECTED_MATRIX FULL_TEXT----------------")
-    print("...31.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_TEST FULL TEXT")
-    mat_nondir_full_test = matrix_gen.get_non_directed(text_full_test, 
-                                                        preprocess=True, 
-                                                        filter_by_length=0,
-                                                        stop_words=stop_words_null)
-    print(mat_nondir_full_test)
-    print("...32.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_BASIC FULL TEXT")
-    mat_nondir_full_basic = matrix_gen.get_non_directed(text_full_basic)
-    print(mat_nondir_full_basic)
-    print("...33.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_FILE FULL TEXT")
-    mat_nondir_full_file = matrix_gen.get_non_directed(text_full_file)
-    print(mat_nondir_full_file)
-    print(" ")
-    print("-------------VERIFICATION GET_NON_DIRECTED_MATRIX SENTENCE----------------")
-    print("...34.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_TEST SENTENCE")
-    gen_sent_test = matrix_gen.read_text_sentence(None, regex_clean, texte=text_test)
-    mat_nondir_sent_test = matrix_gen.get_non_directed(gen_sent_test, 
-                                                        preprocess=True, 
-                                                        filter_by_length=0,
-                                                        stop_words=stop_words_null)
-    print(mat_nondir_sent_test)
-    print("...35.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_BASIC SENTENCE")
-    gen_sent_basic = matrix_gen.read_text_sentence(None, regex_clean, texte=text_basic)
-    mat_nondir_sent_basic = matrix_gen.get_non_directed(gen_sent_basic, filter_by_length=2)
-    print(mat_nondir_sent_basic)
-    print("...36.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_FILE SENTENCE")
-    gen_sent_file = matrix_gen.read_text_sentence(list_file[0], regex_clean)
-    mat_nondir_sent_file = matrix_gen.get_non_directed(gen_sent_file)
-    print(mat_nondir_sent_file)
-    print(" ")
-    print("-------------VERIFICATION GET_NON_DIRECTED_MATRIX WINDOW----------------")
-    print("...37.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_TEST WINDOW")
-    gen_wnd_test = matrix_gen.read_text_window(None, regex_clean, texte=text_test)
-    mat_nondir_wnd_test = matrix_gen.get_non_directed(gen_wnd_test, 
-                                                        preprocess=True, 
-                                                        filter_by_length=0,
-                                                        stop_words=stop_words_null)
-    print(mat_nondir_wnd_test)
-    print("...38.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_BASIC WINDOW")
-    gen_wnd_basic = matrix_gen.read_text_window(None, regex_clean, texte=text_basic)
-    mat_nondir_wnd_basic = matrix_gen.get_non_directed(gen_wnd_basic)
-    print(mat_nondir_wnd_basic)
-    print("...39.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_TEST WINDOW")
-    gen_wnd_file = matrix_gen.read_text_window(list_file[0], regex_clean, window=50)
-    mat_nondir_wnd_file = matrix_gen.get_non_directed(gen_wnd_file)
-    print(mat_nondir_wnd_file)
-    print(" ")
-    print("-------------VERIFICATION GET_NON_DIRECTED_MATRIX SLIDING WINDOW----------------")
-    print("...40.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_TEST SLIDING WINDOW")
-    gen_swnd_test = matrix_gen.read_text_sliding_window(None, regex_clean, texte=text_test)
-    mat_nondir_swnd_test = matrix_gen.get_non_directed(gen_swnd_test, 
-                                                        preprocess=True, 
-                                                        filter_by_length=0,
-                                                        stop_words=stop_words_null)
-    print(mat_nondir_swnd_test)
-    print("...41.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_BASIC SLIDING WINDOW")
-    gen_swnd_basic = matrix_gen.read_text_sliding_window(None, 
-                                                          regex_clean, 
-                                                          texte=text_basic,
-                                                          window=5,
-                                                          step=2)
-    mat_nondir_swnd_basic = matrix_gen.get_non_directed(gen_swnd_basic)
-    print(mat_nondir_swnd_basic)
-    print("...42.VERIFICATION GET_NON_DIRECTED_MATRIX POUR TEXT_FILE SLIDING WINDOW")
-    gen_swnd_file = matrix_gen.read_text_sliding_window(list_file[0], 
-                                                          regex_clean, 
-                                                          window=50,
-                                                          step=10)
-    mat_nondir_swnd_file = matrix_gen.get_non_directed(gen_swnd_file)
-    print(mat_nondir_swnd_file)
-    print(" ")
-    print("-------------VERIFICATION GET_TFIDF_MATRIX FULL_TEXT----------------")
-    print("...43.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_TEST FULL TEXT")
-    mat_tfidf_full_test = matrix_gen.get_tfidf_matrix(text_full_test, 
-                                                        preprocess=True, 
-                                                        filter_by_length=0,
-                                                        stop_words=stop_words_null)
-    print(mat_tfidf_full_test)
-    print("...44.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_BASIC FULL TEXT")
-    mat_tfidf_full_basic = matrix_gen.get_tfidf_matrix(text_full_basic)
-    print(mat_tfidf_full_basic)
-    print("...45.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_FILE FULL TEXT")
-    mat_tfidf_full_file = matrix_gen.get_tfidf_matrix(text_full_file)
-    print(mat_tfidf_full_file)
-    print(" ")
-    print("-------------VERIFICATION GET_TFIDF_MATRIX SENTENCE----------------")
-    print("...46.VERIFICATION GET_NON_TFIDF_MATRIX POUR TEXT_TEST SENTENCE")
-    gen_sent_test = matrix_gen.read_text_sentence(None, regex_clean, texte=text_test)
-    mat_tfidf_sent_test = matrix_gen.get_tfidf_matrix(gen_sent_test, 
-                                                        preprocess=True, 
-                                                        filter_by_length=0,
-                                                        stop_words=stop_words_null)
-    print(mat_tfidf_sent_test)
-    print("...47.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_BASIC SENTENCE")
-    gen_sent_basic = matrix_gen.read_text_sentence(None, regex_clean, texte=text_basic)
-    mat_tfidf_sent_basic = matrix_gen.get_tfidf_matrix(gen_sent_basic)
-    print(mat_tfidf_sent_basic)
-    print("...48.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_FILE SENTENCE")
-    gen_sent_file = matrix_gen.read_text_sentence(list_file[0], regex_clean)
-    mat_tfidf_sent_file = matrix_gen.get_tfidf_matrix(gen_sent_file)
-    print(mat_tfidf_sent_file)
-    print(" ")
-    print("-------------VERIFICATION GET_TFIDF_MATRIX WINDOW----------------")
-    print("...49.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_TEST WINDOW")
-    gen_wnd_test = matrix_gen.read_text_window(None, regex_clean, texte=text_test)
-    mat_tfidf_wnd_test = matrix_gen.get_tfidf_matrix(gen_wnd_test)
-    print(mat_tfidf_wnd_test)
-    print("...50.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_BASIC WINDOW")
-    gen_wnd_basic = matrix_gen.read_text_window(None, regex_clean, texte=text_basic)
-    mat_tfidf_wnd_basic = matrix_gen.get_tfidf_matrix(gen_wnd_basic)
-    print(mat_tfidf_wnd_basic)
-    print("...51.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_TEST WINDOW")
-    gen_wnd_file = matrix_gen.read_text_window(list_file[0], regex_clean, window=50)
-    mat_tfidf_wnd_file = matrix_gen.get_tfidf_matrix(gen_wnd_file)
-    print(mat_tfidf_wnd_file)
-    print(" ")
-    print("-------------VERIFICATION GET_TFIDF_MATRIX SLIDING WINDOW----------------")
-    print("...52.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_TEST SLIDING WINDOW")
-    gen_swnd_test = matrix_gen.read_text_sliding_window(None, regex_clean, texte=text_test)
-    mat_tfidf_swnd_test = matrix_gen.get_tfidf_matrix(gen_swnd_test)
-    print(mat_tfidf_swnd_test)
-    print("...53.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_BASIC SLIDING WINDOW")
-    gen_swnd_basic = matrix_gen.read_text_sliding_window(None, 
-                                                          regex_clean, 
-                                                          texte=text_basic,
-                                                          window=5,
-                                                          step=2)
-    mat_tfidf_swnd_basic = matrix_gen.get_tfidf_matrix(gen_swnd_basic)
-    print(mat_tfidf_swnd_basic)
-    print("...54.VERIFICATION GET_TFIDF_MATRIX POUR TEXT_FILE SLIDING WINDOW")
-    gen_swnd_file = matrix_gen.read_text_sliding_window(list_file[0], 
-                                                          regex_clean, 
-                                                          window=50,
-                                                          step=10)
-    mat_tfidf_swnd_file = matrix_gen.get_tfidf_matrix(gen_swnd_file)
-    print(mat_tfidf_swnd_file)
-    print(" ")
-    print("-------------VERIFICATION GET_COUNTER_MATRIX FULL_TEXT----------------")
-    print("...55.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_TEST FULL TEXT")
-    mat_counter_full_test = matrix_gen.get_counter_matrix(text_full_test, 
-                                                        preprocess=True, 
-                                                        filter_by_length=0,
-                                                        stop_words=stop_words_null)
-    print(mat_counter_full_test)
-    print("...56.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_BASIC FULL TEXT")
-    mat_counter_full_basic = matrix_gen.get_counter_matrix(text_full_basic)
-    print(mat_counter_full_basic)
-    print("...57.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_FILE FULL TEXT")
-    mat_counter_full_file = matrix_gen.get_counter_matrix(text_full_file)
-    print(mat_counter_full_file)
-    print(" ")
-    print("-------------VERIFICATION GET_COUNTER_MATRIX SENTENCE----------------")
-    print("...58.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_TEST SENTENCE")
-    gen_sent_test = matrix_gen.read_text_sentence(None, regex_clean, texte=text_test)
-    mat_counter_sent_test = matrix_gen.get_counter_matrix(gen_sent_test, 
-                                                        preprocess=True, 
-                                                        filter_by_length=0,
-                                                        stop_words=stop_words_null)
-    print(mat_counter_sent_test)
-    print("...59.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_BASIC SENTENCE")
-    gen_sent_basic = matrix_gen.read_text_sentence(None, regex_clean, texte=text_basic)
-    mat_counter_sent_basic = matrix_gen.get_counter_matrix(gen_sent_basic)
-    print(mat_counter_sent_basic)
-    print("...60.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_FILE SENTENCE")
-    gen_sent_file = matrix_gen.read_text_sentence(list_file[0], regex_clean)
-    mat_counter_sent_file = matrix_gen.get_counter_matrix(gen_sent_file)
-    print(mat_counter_sent_file)
-    print(" ")
-    print("-------------VERIFICATION GET_COUNTER_MATRIX WINDOW----------------")
-    print("...61.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_TEST WINDOW")
-    gen_wnd_test = matrix_gen.read_text_window(None, regex_clean, texte=text_test)
-    mat_counter_wnd_test = matrix_gen.get_counter_matrix(gen_wnd_test)
-    print(mat_counter_wnd_test)
-    print("...62.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_BASIC WINDOW")
-    gen_wnd_basic = matrix_gen.read_text_window(None, regex_clean, texte=text_basic)
-    mat_counter_wnd_basic = matrix_gen.get_counter_matrix(gen_wnd_basic)
-    print(mat_counter_wnd_basic)
-    print("...63.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_TEST WINDOW")
-    gen_wnd_file = matrix_gen.read_text_window(list_file[0], regex_clean, window=50)
-    mat_counter_wnd_file = matrix_gen.get_counter_matrix(gen_wnd_file)
-    print(mat_counter_wnd_file)
-    print(" ")
-    print("-------------VERIFICATION GET_COUNTER_MATRIX SLIDING WINDOW----------------")
-    print("...64.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_TEST SLIDING WINDOW")
-    gen_swnd_test = matrix_gen.read_text_sliding_window(None, regex_clean, texte=text_test)
-    mat_counter_swnd_test = matrix_gen.get_counter_matrix(gen_swnd_test)
-    print(mat_counter_swnd_test)
-    print("...65.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_BASIC SLIDING WINDOW")
-    gen_swnd_basic = matrix_gen.read_text_sliding_window(None, 
-                                                          regex_clean, 
-                                                          texte=text_basic,
-                                                          window=5,
-                                                          step=2)
-    mat_counter_swnd_basic = matrix_gen.get_counter_matrix(gen_swnd_basic)
-    print(mat_counter_swnd_basic)
-    print("...66.VERIFICATION GET_COUNTER_MATRIX POUR TEXT_FILE SLIDING WINDOW")
-    gen_swnd_file = matrix_gen.read_text_sliding_window(list_file[0], 
-                                                          regex_clean, 
-                                                          window=50,
-                                                          step=10)
-    mat_counter_swnd_file = matrix_gen.get_counter_matrix(gen_swnd_file)
-    print(mat_counter_swnd_file)
-    print(" ")
-    print(" ")
-    print("-------------VERIFICATION GET_DIRECTED_MATRIX WINDOW POUR TOUT LE CORPUS----------------")
-    start = time.time()
-    list_time = []
-    window_list = [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    file = list_file[0]
-    for wind in window_list:
-        startl = time.time()
-        text_full_file = matrix_gen.read_text_full(file, regex_clean)
-        vocab_file = matrix_gen.get_vocab(text_full_file[0],
-                                          filter_by_length=2,
-                                          stop_words=stop_words)
-        gen_count_wnd_file = matrix_gen.counter_by_window(text_full_file[0], 
-                                                          vocab_file, 
-                                                          window=wind)
-        
-        mat_dir_wnd_file = matrix_gen.get_directed(gen_count_wnd_file, 
-                                                    vocab_file, 
-                                                    option="")
-        stopl = time.time()
-        print(mat_dir_wnd_file)
-        list_time.append(stopl - startl)
-        print(" ")
-    stop = time.time()
-    print(f"temps total pour traiter l'ensemble des textes {stop -start}")
-    print(" ")
-    import matplotlib.pyplot as plt
-    plt.plot(window_list, list_time)
-    plt.xlabel("taille de la fenêtre")
-    plt.ylabel("temps de traitement(s)")
-    plt.show()
-    print("-------------VERIFICATION GET_DIRECTED_MATRIX WINDOW POUR TOUT LE CORPUS----------------")
-    start = time.time()
-    dict_corpus_direct = {}
-    for file in list_file:
-        text_full_file = matrix_gen.read_text_full(file, regex_clean)
-        vocab_file = matrix_gen.get_vocab(text_full_file[0],
-                                          filter_by_length=2,
-                                          stop_words=stop_words)
-        gen_count_wnd_file = matrix_gen.counter_by_window(text_full_file[0], 
-                                                          vocab_file, 
-                                                          window=50)
-        
-        mat_dir_wnd_file = matrix_gen.get_directed(gen_count_wnd_file, 
-                                                    vocab_file, 
-                                                    option="")
-        print(mat_dir_wnd_file)
-        name_file = file.split("/")[-1].split(".")[0]
-        dict_corpus_direct[name_file] = mat_dir_wnd_file
-        print(" ")
-    stop = time.time()
-    print(f"temps total pour traiter l'ensemble des textes {stop -start}")
-    print(" ")
-    # print("-------------SAUVEGARDE DES DONNEES-------------")
-    # for key, df in dict_corpus_direct.items():
-    #     filename = os.path.join(save_path, key+".csv")
-    #     save_result(df, filename, option="csv")
-    # print(" ")
-    print("-------------METRIQUES POUR 2 VECTEURS DE 2 DATES----------------")
-    df_1483 = dict_corpus_direct["1483"]
-    df_1498 = dict_corpus_direct["1498"]
-    
-    columns_1483 = list(df_1483.columns)
-    columns_1498 = list(df_1498.columns)
-    vocab_commun = list(set(columns_1483).intersection(set(columns_1498)))
-    #print(vocab_commun)
-    dieu_1483 = df_1483.loc["dieu", vocab_commun]
-    #print(dieu_1483)
-    dieu_1498 = df_1498.loc["dieu", vocab_commun]
-    dieu_nofiltre_1483 = df_1483["dieu"]
-    dieu_nofiltre_1498 = df_1498["dieu"]
-    print("------------VERIFICATION DE LA FONCTION COMPARE_TRANSFORM DE METRIQUE----------------")
-    u, v, vocab_com = compare_transform(dieu_nofiltre_1483, dieu_nofiltre_1498, option="filtre")
-    assert u.all() == dieu_1483.all()
-    dieu_both_trans, _ = compare_transform(dieu_nofiltre_1483, dieu_nofiltre_1498, option="transform", name1="dieu_1483", name2="dieu_1498")
-    dieu_both, _ = compare_transform(dieu_nofiltre_1483, dieu_nofiltre_1498, option="no transform", name1="dieu_1483", name2="dieu_1498")
-    print(dieu_both_trans)
-    print(dieu_both)
-    print("------------VERIFICATION DE LA FONCTION CALCULATE_DICE----------------")
-    print("indice de dice pour dieu 1483 et 1498", calculate_dice(dieu_1483, dieu_1498))
-    print("indice de dice pour dieu 1483 et 1498 compare transform", calculate_dice(dieu_both.dieu_1483, dieu_both.dieu_1498))
-    print("-------------METRIQUE COSINE POUR 2 VECTEURS DE 2 DATES")
-    print("similarité cosinus pour dieu 1483 et 1498", calculate_cosine(dieu_1483, dieu_1498))
-    print("similarité cosinus pour dieu 1483 et 1498 compare transform", calculate_cosine(dieu_both.dieu_1483, dieu_both.dieu_1498))
-    print("-------------METRIQUE JACCARD POUR 2 VECTEURS DE 2 DATES")
-    print("similarité jaccard pour dieu 1483 et 1498", calculate_jaccard(dieu_1483, dieu_1498))
-    print("similarité jaccard pour dieu 1483 et 1498 compare transform", calculate_jaccard(dieu_both.dieu_1483, dieu_both.dieu_1498))
-    print("-------------METRIQUE PEARSON POUR 2 VECTEURS DE 2 DATES")
-    print("Correlation Pearson pour dieu 1483 et 1498", calculate_pearson(dieu_1483, dieu_1498)[0])
-    print("Correlation Pearson pour dieu 1483 et 1498 compare transform", calculate_pearson(dieu_both.dieu_1483, dieu_both.dieu_1498)[0])
-    print("-------------METRIQUE LOG LIKELIHOOD POUR 2 VECTEURS DE 2 DATES")
-    print("Similarité likelihood pour dieu 1483 et 1498", calculate_likelihood(dieu_1483, dieu_1498))
-    print("Similarité likelihood pour dieu 1483 et 1498 compare transform", calculate_likelihood(dieu_both.dieu_1483, dieu_both.dieu_1498))
-    print("-------------METRIQUE ENTROPY POUR 1 VECTEUR")
-    print("Entropy pour dieu 1483", calculate_approximate_entropy(dieu_1483))
-    print("Entropy pour dieu 1483 compare transform", calculate_approximate_entropy(dieu_both.dieu_1483))
-    print("-------------METRIQUE MUTUAL INFORMATION SCORE POUR 2 VECTEURS DE 2 DATES")
-    print("Score Mutual Information pour dieu 1483 et 1498", calculate_mutual_information(dieu_1483, dieu_1498))
-    print("Score Mutual Informationpour dieu 1483 et 1498 compare transform", calculate_mutual_information(dieu_both_trans.dieu_1483, dieu_both_trans.dieu_1498))
-
-
-
-    
-    

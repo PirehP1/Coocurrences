@@ -1,7 +1,21 @@
+#!/usr/bin/env python3
+
+
+"""
+Created on Thu Jul 15 10:40:20 2021
+@author: Audrey Quessada Vial, Stephane Lamassé
+Institutions: Pireh-Lamop
+LICENCE GNU
+This script aims to generate cooccurrence matrix
+"""
+
+__version__ = "0.1.0"
+__authors__ = "Audrey Quessada Vial","Stephane Lamassé"
+
+
 from traitement.traitement import Preprocessing, read_stop_word
 from metrique.metrique import *
 from matrix.matrix_generator import *
-
 
 
 

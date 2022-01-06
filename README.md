@@ -17,7 +17,7 @@ Métrique de spécificité définie par l'utilisateur (hypergeometrique, dice, c
 
 
 ## Sous Windows
-Il faut installer une version de [python][https://www.python.org/downloads/windows/] supérieure à 3. Ensuite installer les bibliothèques dans shell(PowerShell par exemple) avec pip3. 
+Il faut installer une version de [[python][https://www.python.org/downloads/windows/]] supérieure à 3. Ensuite installer les bibliothèques dans shell(PowerShell par exemple) avec pip3. 
 Vous pouvez par exemple installer numpy de cette façon : 
 ```python
 pip3 install numpy

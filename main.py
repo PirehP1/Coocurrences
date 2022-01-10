@@ -55,7 +55,7 @@ if __name__ == "__main__":
     # Exemple sur une centaine de fichiers
     list_matrix = []
     i = 0
-    n = 100 # nombre de textes lus 
+    n = 100 # nombre de textes dans le répertoire Data/Text/
     while i <= n:
         file = list_file[i]
         if file.endswith(".txt"):

@@ -109,7 +109,7 @@ if __name__ == "__main__":
 
  #           print("-------------4.VERIFICATION SPECIFICITE GET_DIRECTED_MATRIX WINDOW----------------")
             ''' 
-            il faut le reprendre pour calculer les specificité 
+            il faut le reprendre pour calculer les specificités 
             '''
             gen_count_wnd_file = matrix_gen.counter_by_window(text_full_file[0], 
                                                       vocab_file, 

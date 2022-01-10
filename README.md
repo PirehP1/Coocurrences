@@ -7,6 +7,7 @@ Il s'agit d'un programme qui produit à partir d'un fichier texte une matrice de
 * Pandas 1.3.0
 * Scikit-Learn 0.24.2
 * Regex 2021.7.6
+* mpmath
 
 ## Spécifications
 

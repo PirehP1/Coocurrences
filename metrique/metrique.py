@@ -223,6 +223,12 @@ def log_stirling(n):
    
     
 def hypergeometric(F, f, t, T, option="logfrac"):
+    '''
+    T : le nombre d'occurrences dans le corpus
+    t : le nombre d'occurrences dans les contextes du pôle
+    F : la fréquence du cooccurrent dans le corpus
+    f : la fréquence du cooccurrent dans les contextes du pôle
+    '''
     if (T - F - t + f <= 0) or (T - F <= 0) or (T - t <= 0) :
         return 0
     else:

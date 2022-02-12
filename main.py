@@ -22,7 +22,7 @@ from matrix.matrix_generator import *
 if __name__ == "__main__":
     """ATTENTION ICI MODIFIER LE PATH VERS LES FICHIERS TEXTS"""
     dir_out = "Results/"
-    input_path = "Data/Text"#"../Data/corpusbyTime"
+    input_path = "Data/"#"../Data/corpusbyTime"
     save_path = "Results"
 
     """ATTENTION DONNER LE PATH VERS LES STOP-WORDS"""
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     # Exemple sur une centaine de fichiers
     list_matrix = []
     i = 0
-    n = 100 # nombre de textes dans le répertoire Data/Text/
+    n = len(list_file) -1  # nombre de textes lus 
     while i <= n:
         file = list_file[i]
         if file.endswith(".txt"):
@@ -106,10 +106,11 @@ if __name__ == "__main__":
                                                 vocab_file, 
                                                 option="")
             key = "matrice dirigée par fenêtre " + filename
+            
 
  #           print("-------------4.VERIFICATION SPECIFICITE GET_DIRECTED_MATRIX WINDOW----------------")
             ''' 
-            il faut le reprendre pour calculer les specificités 
+            il faut le reprendre pour calculer les specificité 
             '''
             gen_count_wnd_file = matrix_gen.counter_by_window(text_full_file[0], 
                                                       vocab_file, 
@@ -128,10 +129,4 @@ if __name__ == "__main__":
             nme = dir_out  + filename + "spec.csv"
             spec_wnd.to_csv(nme, sep=";")
         i += 1
-#    print(("=================================="))
-#    big = concatenate_matrix(list_matrix, list_file)
-#    print(big.shape) # donne les dimensions de la matrice
-    '''
-    print colonne date
-    '''
-  #  big.to_csv("big_directed.csv", sep=";")
+

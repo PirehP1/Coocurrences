@@ -23,3 +23,21 @@ Vous pouvez par exemple installer numpy de cette façon :
 ```python
 pip3 install numpy
 ```
+
+
+## Quelques éléments
+
+* La classe **matrix_generator.py**  contient une suite d'opérations nécessaires à la construction de la matrice de coocurrence dirigée ou non. 
+	- MatrixGenerator()  possède un assez grand nombre de méthodes 
+		* .get_vocab()
+			- > permet de déterminer les fenêtres (phrases, paragraphes, nombre de formes) dans l'espace desquelles on extrait les coocurrents 
+		* .counter_full()
+			- > calcul le dictionnaire des fréquences de toutes les occurrences
+		* .counter_by_window() 
+			- > calcul le dictionnaire des fréquences par fenêtre, les formes ont un index
+		* .get_directed() 
+			- > calcul la matrice dirigée et possède un paramètre permettant d'évaluer les coocurrents spécifiques à des formes pôles, il s'agit de :  option="". 
+				* hypergeometrique
+				* cosinus
+				* dice
+
